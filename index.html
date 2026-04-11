@@ -1,1 +1,481 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scale Quick Viewer</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { -webkit-text-size-adjust:100%; }
+  button { -webkit-appearance:none; -moz-appearance:none; appearance:none; }
+</style>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo, useEffect } = React;
 
+/* ═══════════════════════════════════════════════════════
+   SCALE QUICK VIEWER v1.1
+   主要スケール・指板ポジション表示
+
+   v1.1: 内部構造整理
+   - DEG_COLORS 共通化（degColor / 凡例の一元管理）
+   - computeScaleInfo: スケール派生情報の統合計算
+   - computeFretboardPoints: 指板上のスケール音導出を分離
+   ═══════════════════════════════════════════════════════ */
+
+const NOTES_SHARP = ["C","C♯","D","D♯","E","F","F♯","G","G♯","A","A♯","B"];
+const NOTES_FLAT  = ["C","D♭","D","E♭","E","F","G♭","G","A♭","A","B♭","B"];
+const NATURAL_PCS = new Set([0,2,4,5,7,9,11]);
+const mod12 = n => ((n % 12) + 12) % 12;
+const TUNING_PC = [4, 9, 2, 7, 11, 4]; /* 6弦→1弦 */
+
+/* ─── スケールカテゴリ ─── */
+const CATEGORIES = [
+  { key: "basic",   label: "Basic" },
+  { key: "mode",    label: "Modes" },
+  { key: "other",   label: "Dominant" },
+];
+
+/* ─── スケールタイプ定義 ───
+   スケールビューア v1.4 の SCALE_DEFS と同一の21スケール。
+   iv: ルートからの半音数
+   deg: 各音の度数ラベル（UI表示用） */
+const SCALE_TYPES = {
+  major:       { uiLabel:"メジャー",     cat:"basic", iv:[0,2,4,5,7,9,11],     deg:["R","2","3","4","5","6","7"] },
+  natural_m:   { uiLabel:"ナチュラルマイナー", cat:"basic", iv:[0,2,3,5,7,8,10], deg:["R","2","♭3","4","5","♭6","♭7"] },
+  penta_M:     { uiLabel:"メジャーペンタ", cat:"basic", iv:[0,2,4,7,9],         deg:["R","2","3","5","6"] },
+  penta_m:     { uiLabel:"マイナーペンタ", cat:"basic", iv:[0,3,5,7,10],        deg:["R","♭3","4","5","♭7"] },
+  blues:       { uiLabel:"ブルース",     cat:"basic", iv:[0,3,5,6,7,10],       deg:["R","♭3","4","♭5","5","♭7"] },
+  ionian:      { uiLabel:"イオニアン",    cat:"mode",  iv:[0,2,4,5,7,9,11],     deg:["R","2","3","4","5","6","7"] },
+  dorian:      { uiLabel:"ドリアン",     cat:"mode",  iv:[0,2,3,5,7,9,10],     deg:["R","2","♭3","4","5","6","♭7"] },
+  phrygian:    { uiLabel:"フリジアン",    cat:"mode",  iv:[0,1,3,5,7,8,10],     deg:["R","♭2","♭3","4","5","♭6","♭7"] },
+  lydian:      { uiLabel:"リディアン",    cat:"mode",  iv:[0,2,4,6,7,9,11],     deg:["R","2","3","♯4","5","6","7"] },
+  mixolydian:  { uiLabel:"ミクソリディアン", cat:"mode", iv:[0,2,4,5,7,9,10],    deg:["R","2","3","4","5","6","♭7"] },
+  aeolian:     { uiLabel:"エオリアン",    cat:"mode",  iv:[0,2,3,5,7,8,10],     deg:["R","2","♭3","4","5","♭6","♭7"] },
+  locrian:     { uiLabel:"ロクリアン",    cat:"mode",  iv:[0,1,3,5,6,8,10],     deg:["R","♭2","♭3","4","♭5","♭6","♭7"] },
+  melodic_m:   { uiLabel:"メロディックマイナー", cat:"other", iv:[0,2,3,5,7,9,11], deg:["R","2","♭3","4","5","6","7"] },
+  harmonic_m:  { uiLabel:"ハーモニックマイナー", cat:"other", iv:[0,2,3,5,7,8,11], deg:["R","2","♭3","4","5","♭6","7"] },
+  altered:     { uiLabel:"オルタード",    cat:"other", iv:[0,1,3,4,6,8,10],     deg:["R","♭9","♯9","3","♯11","♭13","♭7"] },
+  whole_tone:  { uiLabel:"ホールトーン",   cat:"other", iv:[0,2,4,6,8,10],      deg:["R","2","3","♯4","♭6","♭7"] },
+  diminished:  { uiLabel:"ディミニッシュ",  cat:"other", iv:[0,2,3,5,6,8,9,11],  deg:["R","2","♭3","4","♭5","♭6","6","7"] },
+  lydian_b7:   { uiLabel:"リディアン♭7",  cat:"other", iv:[0,2,4,6,7,9,10],    deg:["R","2","3","♯4","5","6","♭7"] },
+  hmp5:        { uiLabel:"HMP5 below",  cat:"other", iv:[0,1,4,5,7,8,10],     deg:["R","♭2","3","4","5","♭6","♭7"] },
+  combi_dim:   { uiLabel:"コンディミ",    cat:"other", iv:[0,1,3,4,6,7,9,10],   deg:["R","♭2","♭3","3","♭5","5","6","♭7"] },
+};
+
+const TYPE_ORDER = CATEGORIES.flatMap(cat =>
+  Object.keys(SCALE_TYPES).filter(k => SCALE_TYPES[k].cat === cat.key)
+);
+
+/* ─── 度数カラー共通定義 ───
+   degColor() と凡例の両方がこれを参照する。
+   凡例は DEG_COLORS_LEGEND から自動生成。 */
+const DEG_COLORS = {
+  root:    { color: "#d9534f", label: "R" },
+  third:   { color: "#2e8b57", label: "3rd" },
+  fifth:   { color: "#2b7de0", label: "5th" },
+  seventh: { color: "#7b5ea7", label: "7th" },
+  other:   { color: "#d48a29", label: "その他" },
+};
+
+const DEG_COLORS_LEGEND = Object.values(DEG_COLORS);
+
+function degColor(deg) {
+  if (deg === "R") return DEG_COLORS.root.color;
+  if (["3","♭3"].includes(deg)) return DEG_COLORS.third.color;
+  if (["5","♭5","♯5"].includes(deg)) return DEG_COLORS.fifth.color;
+  if (["7","♭7"].includes(deg)) return DEG_COLORS.seventh.color;
+  /* 2,♭2,4,♯4,6,♭6,♭9,♯9,♯11,♭13 → アンバー */
+  return DEG_COLORS.other.color;
+}
+
+/* ─── コードトーン判定用 ─── */
+const CHORD_TONE_DEGS = new Set(["R","3","♭3","5","♭5","♯5","7","♭7"]);
+
+/* ─── degree フィルタ ───
+   points 配列を degFilter / selectedDeg に基づいてフィルタする。
+   "all": そのまま返す
+   "root": R のみ
+   "chord": コードトーン（R/3/5/7系）のみ
+   "pick": selectedDeg に一致するもののみ */
+function filterPoints(points, degFilter, selectedDeg) {
+  if (degFilter === "all") return points;
+  if (degFilter === "root") return points.filter(p => p.isRoot);
+  if (degFilter === "chord") return points.filter(p => CHORD_TONE_DEGS.has(p.deg));
+  if (degFilter === "pick") return points.filter(p => p.deg === selectedDeg);
+  return points;
+}
+/* ─── 度数に応じた♯/♭音名選択 ───
+   度数ラベルに♭が含まれる音は♭表記、♯が含まれる音は♯表記で返す。
+   R,2,3,4,5,6,7 など無変化の度数はuseFlat設定に従う。
+   これにより「♯4 = F♯」「♭7 = B♭」が同一スケール内で共存できる。 */
+function noteNameForPc(pc, deg, useFlat) {
+  if (deg.includes("♭") || deg.includes("b")) return NOTES_FLAT[pc];
+  if (deg.includes("♯") || deg.includes("#")) return NOTES_SHARP[pc];
+  return useFlat ? NOTES_FLAT[pc] : NOTES_SHARP[pc];
+}
+
+/* ─── スケール派生情報の統合計算 ───
+   rootPc + scaleType + useFlat から、UI表示に必要な情報をまとめて返す。
+   各音の音名は度数ラベルの♯/♭に基づいて個別に決定する。
+   戻り値:
+   - scaleDef: SCALE_TYPES エントリ
+   - scalePcSet: スケール構成音の Set
+   - ivToDeg: interval→度数ラベルのマップ
+   - notesDeg: [{note, deg}, ...] 構成音と度数のペア配列
+   - scaleName: 表示用スケール名（例: "C メジャー"） */
+function computeScaleInfo(rootPc, scaleType, NOTES, useFlat) {
+  const scaleDef = SCALE_TYPES[scaleType];
+  const ivToDeg = {};
+  scaleDef.iv.forEach((iv, i) => { ivToDeg[iv] = scaleDef.deg[i]; });
+  const scalePcSet = new Set(scaleDef.iv.map(iv => mod12(rootPc + iv)));
+  const notesDeg = scaleDef.iv.map((iv, i) => {
+    const pc = mod12(rootPc + iv);
+    const deg = scaleDef.deg[i];
+    return { note: noteNameForPc(pc, deg, useFlat), deg };
+  });
+  const rootName = useFlat ? NOTES_FLAT[rootPc] : NOTES_SHARP[rootPc];
+  const scaleName = rootName + " " + scaleDef.uiLabel;
+  return { scaleDef, scalePcSet, ivToDeg, notesDeg, scaleName };
+}
+
+/* ─── 指板上のスケール音導出 ───
+   音楽理論の計算をFretboardDiagram描画ロジックから分離する。
+   各音の音名は度数ラベルの♯/♭に基づいて個別に決定する。
+   戻り値: 配列 [{ si, fret, pc, deg, noteName, isRoot, color }, ...]
+   描画側はこの配列をmapするだけでよい。 */
+function computeFretboardPoints(rootPc, scalePcSet, ivToDeg, fretStart, fretEnd, useFlat) {
+  const points = [];
+  for (let si = 0; si < 6; si++) {
+    const openPc = TUNING_PC[si];
+    for (let fret = fretStart; fret <= fretEnd; fret++) {
+      const pc = mod12(openPc + fret);
+      if (!scalePcSet.has(pc)) continue;
+      const interval = mod12(pc - rootPc);
+      const deg = ivToDeg[interval] || "";
+      const isRoot = deg === "R";
+      const noteName = noteNameForPc(pc, deg, useFlat);
+      points.push({ si, fret, pc, deg, noteName, isRoot, color: degColor(deg) });
+    }
+  }
+  return points;
+}
+
+/* ─── 指板ダイアグラム（描画専任） ───
+   computeFretboardPoints の結果を受け取ってSVGを描画する。
+
+   レイアウト:
+   - 左端に開放弦用の小スペース（ナット左）
+   - ナット線
+   - ナット右から fretStart〜fretEnd のフレットマス目が並ぶ
+   - 各マス目の中央にフレット番号を表示
+   - fretStart=0 のとき、1フレットから描画し、開放弦音はナット左に表示 */
+function FretboardDiagram({ points, fretStart, fretEnd, theme: T, fitWidth, labelMode }) {
+  /* 実際に描画するフレットマス目の範囲（1始まり） */
+  const firstFret = Math.max(fretStart, 1);
+  const numFretCols = fretEnd - firstFret + 1;
+  const hasOpen = fretStart === 0;
+
+  /* レイアウト定数 */
+  const sG = 32, fW = 56, pR = 14, pT = 24, pB = 28;
+  const openW = hasOpen ? 32 : 0; /* 開放弦スペース幅 */
+  const nutX = 28 + openW;        /* ナット線のx座標 */
+  const w = nutX + numFretCols * fW + pR;
+  const h = pT + 5 * sG + pB;
+  const sY = si => pT + (5 - si) * sG;
+
+  /* フレット番号→マス目中央のx座標 */
+  const fretCx = (fret) => nutX + (fret - firstFret + 0.5) * fW;
+
+  /* ポジションマーカー */
+  const markerFrets = new Set([3,5,7,9,12,15,17,19,21]);
+
+  return (
+    <svg viewBox={"0 0 "+w+" "+h}
+      style={fitWidth
+        ? { display:"block", width:"100%", height:"auto" }
+        : { display:"block", width:w+"px", height:h+"px", minWidth:w+"px" }
+      }>
+      {/* ナット */}
+      <line x1={nutX} y1={pT - 6} x2={nutX} y2={pT + 5 * sG + 6}
+        stroke={T.nutCol} strokeWidth={6} strokeLinecap="round" />
+
+      {/* フレット線（各マス目の右端） */}
+      {Array.from({ length: numFretCols }, (_, i) => {
+        const x = nutX + (i + 1) * fW;
+        return <line key={"fl"+i} x1={x} y1={pT - 4} x2={x} y2={pT + 5 * sG + 4}
+          stroke={T.fretCol} strokeWidth={1.5} />;
+      })}
+
+      {/* 弦 */}
+      {Array.from({ length: 6 }, (_, si) => (
+        <line key={"s"+si}
+          x1={hasOpen ? 8 : nutX} y1={sY(si)}
+          x2={nutX + numFretCols * fW} y2={sY(si)}
+          stroke={T.strCol} strokeWidth={2.2 - si * 0.25} />
+      ))}
+
+      {/* フレット番号 + ポジションマーカー */}
+      {Array.from({ length: numFretCols }, (_, i) => {
+        const fret = firstFret + i;
+        const cx = fretCx(fret);
+        return (
+          <g key={"fn"+i}>
+            <text x={cx} y={h - 5} fontSize={13} fill={T.muted} fontWeight={600}
+              textAnchor="middle" fontFamily="sans-serif">{fret}</text>
+            {markerFrets.has(fret) && (
+              <circle cx={cx} cy={pT + 2.5 * sG} r={4}
+                fill={fret === 12 ? "#c9a84c" : T.faint} opacity={0.5} />
+            )}
+          </g>
+        );
+      })}
+
+      {/* スケール音のプロット */}
+      {points.map(p => {
+        const y = sY(p.si);
+        const cx = p.fret === 0 ? nutX - openW / 2 : fretCx(p.fret);
+        const dotR = p.isRoot ? 15 : 13;
+        const label = labelMode === "note" ? p.noteName : p.deg;
+        const isLong = label.length > 2;
+        const isMid = !isLong && label.length > 1;
+        const fontSize = p.isRoot
+          ? (isLong ? 11 : isMid ? 13 : 16)
+          : (isLong ? 10 : isMid ? 12 : 15);
+        return (
+          <g key={p.si+"-"+p.fret}>
+            {p.isRoot && <circle cx={cx} cy={y} r={dotR + 5} fill={p.color} opacity={0.18} />}
+            <circle cx={cx} cy={y} r={dotR} fill={p.color} />
+            {p.isRoot && <circle cx={cx} cy={y} r={dotR} fill="none" stroke="#fff" strokeWidth={2.5} />}
+            <text x={cx} y={y + 1} textAnchor="middle" dominantBaseline="central"
+              fontSize={fontSize} fontWeight={800} fill="#fff" fontFamily="sans-serif">{label}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/* ─── 異名同音表示用テーブル ─── */
+const ALL_ROOTS = [
+  { pc: 0, sharp: "C",  flat: "C"  },
+  { pc: 1, sharp: "C♯", flat: "D♭" },
+  { pc: 2, sharp: "D",  flat: "D"  },
+  { pc: 3, sharp: "D♯", flat: "E♭" },
+  { pc: 4, sharp: "E",  flat: "E"  },
+  { pc: 5, sharp: "F",  flat: "F"  },
+  { pc: 6, sharp: "F♯", flat: "G♭" },
+  { pc: 7, sharp: "G",  flat: "G"  },
+  { pc: 8, sharp: "G♯", flat: "A♭" },
+  { pc: 9, sharp: "A",  flat: "A"  },
+  { pc:10, sharp: "A♯", flat: "B♭" },
+  { pc:11, sharp: "B",  flat: "B"  },
+];
+
+/* ═══════════════════════════════════════
+   メインアプリ
+   ═══════════════════════════════════════ */
+function App() {
+  const [rootPc, setRootPc] = useState(0);
+  const [useFlat, setUseFlat] = useState(false);
+  const [scaleType, setScaleType] = useState("major");
+  const [dark, setDark] = useState(false);
+  const [boardWide, setBoardWide] = useState(false);
+  const [labelMode, setLabelMode] = useState("degree"); /* "degree" | "note" */
+  const [degFilter, setDegFilter] = useState("all"); /* "all" | "root" | "chord" | "pick" */
+  const [selectedDeg, setSelectedDeg] = useState("R"); /* pick モード用 */
+
+  const NOTES = useFlat ? NOTES_FLAT : NOTES_SHARP;
+
+  /* スケール派生情報を一括計算 */
+  const scaleInfo = useMemo(() =>
+    computeScaleInfo(rootPc, scaleType, NOTES, useFlat)
+  , [rootPc, scaleType, useFlat]);
+
+  /* pick モード安全補正: スケール変更で selectedDeg が存在しなくなったら自動補正 */
+  useEffect(() => {
+    const degs = SCALE_TYPES[scaleType].deg;
+    if (!degs.includes(selectedDeg)) {
+      setSelectedDeg(degs.includes("R") ? "R" : degs[0]);
+    }
+  }, [scaleType]);
+
+  /* 指板上のスケール音を事前計算（スクロール用15fr / 全体用12fr） */
+  const pointsScroll = useMemo(() =>
+    computeFretboardPoints(rootPc, scaleInfo.scalePcSet, scaleInfo.ivToDeg, 0, 15, useFlat)
+  , [rootPc, scaleInfo, useFlat]);
+
+  const pointsWide = useMemo(() =>
+    computeFretboardPoints(rootPc, scaleInfo.scalePcSet, scaleInfo.ivToDeg, 0, 12, useFlat)
+  , [rootPc, scaleInfo, useFlat]);
+
+  const groupedTypes = useMemo(() =>
+    CATEGORIES.map(cat => ({ ...cat, types: TYPE_ORDER.filter(k => SCALE_TYPES[k].cat === cat.key) }))
+  , []);
+
+  /* フィルタ済み points */
+  const filteredScroll = useMemo(() => filterPoints(pointsScroll, degFilter, selectedDeg), [pointsScroll, degFilter, selectedDeg]);
+  const filteredWide = useMemo(() => filterPoints(pointsWide, degFilter, selectedDeg), [pointsWide, degFilter, selectedDeg]);
+
+  const isNatural = NATURAL_PCS.has(rootPc);
+
+  const T = dark
+    ? { bg:"#1a1a1a", card:"#2a2a2a", border:"#3a3a3a", text:"#f0f0f0", muted:"#999", faint:"#555",
+        btnBg:"#333", btnText:"#f0f0f0", btnOffBg:"#2a2a2a", btnOffText:"#aaa",
+        infoBg:"#222", infoText:"#f0f0f0", infoMuted:"#888",
+        nutCol:"#d4c5a0", strCol:"#666", fretCol:"#555", dotMute:"#666" }
+    : { bg:"#fff", card:"#fafaf8", border:"#e8e8e4", text:"#222", muted:"#aaa", faint:"#ccc",
+        btnBg:"#333", btnText:"#fff", btnOffBg:"#f0f0ee", btnOffText:"#444",
+        infoBg:"#f8f8f6", infoText:"#222", infoMuted:"#aaa",
+        nutCol:"#222", strCol:"#999", fretCol:"#ccc", dotMute:"#aaa" };
+
+  const rBtn = a => ({
+    padding:"7px 0", fontSize:13, fontWeight:700, borderRadius:8, border:"none", cursor:"pointer",
+    background: a ? T.btnBg : T.btnOffBg, color: a ? T.btnText : T.btnOffText,
+    width:44, textAlign:"center", transition:"all .12s",
+  });
+  const tBtn = a => ({
+    padding:"5px 9px", fontSize:11, fontWeight:600, borderRadius:6, cursor:"pointer", transition:"all .12s",
+    border: a ? "2px solid #d9534f" : "1px solid "+T.border,
+    background: a ? "#d9534f" : dark ? T.card : "#fff", color: a ? "#fff" : dark ? "#ccc" : "#555",
+  });
+
+  return (
+    <div style={{ padding:"20px 16px", maxWidth:600, margin:"0 auto", fontFamily:"'Helvetica Neue',Arial,sans-serif", color:T.text, background:T.bg, minHeight:"100vh" }}>
+      {/* Header + dark toggle */}
+      <div style={{ display:"flex", justifyContent:"center", alignItems:"center", marginBottom:16, position:"relative" }}>
+        <p style={{ fontSize:16, color:T.muted, margin:0, fontWeight:700 }}>Scale Quick Viewer</p>
+        <button onClick={() => setDark(d => !d)} style={{
+          position:"absolute", right:0, padding:"4px 8px", fontSize:11, borderRadius:6,
+          border:"1px solid "+T.border, background:dark?T.card:"#f0f0ee", color:T.muted,
+          cursor:"pointer", fontWeight:600,
+        }}>{dark ? "☀" : "🌙"}</button>
+      </div>
+
+      {/* ルート選択 */}
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+        <div style={{ display:"flex", gap:4, flex:1, justifyContent:"center" }}>
+          {[{n:"C",p:0},{n:"D",p:2},{n:"E",p:4},{n:"F",p:5},{n:"G",p:7},{n:"A",p:9},{n:"B",p:11}].map(x => {
+            /* 臨時記号音のとき、元のナチュラル音ボタンをハイライト */
+            const basePc = isNatural ? rootPc : (useFlat ? mod12(rootPc + 1) : mod12(rootPc - 1));
+            return (
+              <button key={x.p} onClick={() => setRootPc(x.p)}
+                style={rBtn(basePc === x.p)}>{x.n}</button>
+            );
+          })}
+        </div>
+        <div style={{ display:"flex", gap:3, flexShrink:0 }}>
+          <button onClick={() => {
+            setUseFlat(false);
+            if (isNatural) setRootPc(mod12(rootPc + 1));
+            else setRootPc(mod12(rootPc - 1));
+          }} style={{
+            padding:"6px 10px", fontSize:14, fontWeight:800, borderRadius:8, cursor:"pointer", minWidth:36,
+            border: !isNatural && !useFlat ? "2px solid #d9534f" : "1px solid "+T.border,
+            background: !isNatural && !useFlat ? "#d9534f" : dark ? T.card : "#fff",
+            color: !isNatural && !useFlat ? "#fff" : dark ? "#ccc" : "#555",
+          }}>♯</button>
+          <button onClick={() => {
+            setUseFlat(true);
+            if (isNatural) setRootPc(mod12(rootPc - 1));
+            else setRootPc(mod12(rootPc + 1));
+          }} style={{
+            padding:"6px 10px", fontSize:14, fontWeight:800, borderRadius:8, cursor:"pointer", minWidth:36,
+            border: !isNatural && useFlat ? "2px solid #d9534f" : "1px solid "+T.border,
+            background: !isNatural && useFlat ? "#d9534f" : dark ? T.card : "#fff",
+            color: !isNatural && useFlat ? "#fff" : dark ? "#ccc" : "#555",
+          }}>♭</button>
+        </div>
+      </div>
+
+      {!isNatural && (
+        <div style={{ textAlign:"center", marginBottom:8, fontSize:11, color:T.muted }}>
+          = {useFlat ? ALL_ROOTS[rootPc].sharp : ALL_ROOTS[rootPc].flat}
+        </div>
+      )}
+
+      {/* スケールタイプ選択 */}
+      <div style={{ marginBottom:18 }}>
+        {groupedTypes.map(g => (
+          <div key={g.key} style={{ marginBottom:8 }}>
+            <div style={{ fontSize:9, fontWeight:700, color:T.muted, letterSpacing:1.5, textTransform:"uppercase", marginBottom:4, textAlign:"center" }}>{g.label}</div>
+            <div style={{ display:"flex", justifyContent:"center", gap:4, flexWrap:"wrap" }}>
+              {g.types.map(t => (
+                <button key={t} onClick={() => setScaleType(t)} style={tBtn(t === scaleType)}>{SCALE_TYPES[t].uiLabel}</button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* スケール情報 */}
+      <div style={{ textAlign:"center", marginBottom:12, padding:"12px 16px", background:T.infoBg, borderRadius:10, border:"1px solid "+T.border }}>
+        <h1 style={{ fontSize:24, fontWeight:900, margin:"0 0 8px", letterSpacing:1, color:T.infoText }}>{scaleInfo.scaleName}</h1>
+        <div style={{ display:"flex", justifyContent:"center", gap:20, flexWrap:"wrap" }}>
+          <div style={{ textAlign:"center" }}>
+            <div style={{ fontSize:9, color:T.infoMuted, fontWeight:600, marginBottom:3, letterSpacing:1 }}>構成音</div>
+            <div style={{ fontSize:14, fontWeight:700, letterSpacing:2, color:T.infoText }}>{scaleInfo.notesDeg.map(nd => nd.note).join("  ")}</div>
+          </div>
+          <div style={{ width:1, background:T.border }} />
+          <div style={{ textAlign:"center" }}>
+            <div style={{ fontSize:9, color:T.infoMuted, fontWeight:600, marginBottom:3, letterSpacing:1 }}>度数</div>
+            <div style={{ fontSize:14, fontWeight:700, letterSpacing:2, color:T.infoText }}>{scaleInfo.notesDeg.map(nd => nd.deg).join("  ")}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* 度数カラー凡例（DEG_COLORS から自動生成） */}
+      <div style={{ display:"flex", justifyContent:"center", gap:12, marginBottom:10, flexWrap:"wrap" }}>
+        {DEG_COLORS_LEGEND.map(item => (
+          <div key={item.label} style={{ display:"flex", alignItems:"center", gap:3 }}>
+            <span style={{
+              display:"inline-block", width:8, height:8, borderRadius:"50%",
+              background:item.color, flexShrink:0,
+            }} />
+            <span style={{ fontSize:10, color:T.muted, fontWeight:600, letterSpacing:0.3 }}>{item.label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* 指板表示切替 */}
+      <div style={{ display:"flex", justifyContent:"flex-end", gap:6, marginBottom:6 }}>
+        <button onClick={() => setLabelMode(m => m === "degree" ? "note" : "degree")} style={{
+          padding:"5px 12px", fontSize:11, fontWeight:600, borderRadius:6, cursor:"pointer",
+          border: "1px solid "+T.border, transition:"all .12s",
+          background: labelMode === "note" ? "#d9534f" : (dark ? T.card : "#fff"),
+          color: labelMode === "note" ? "#fff" : T.muted,
+        }}>{labelMode === "degree" ? "音名" : "度数"}</button>
+        <button onClick={() => setBoardWide(w => !w)} style={{
+          padding:"5px 12px", fontSize:11, fontWeight:600, borderRadius:6, cursor:"pointer",
+          border: "1px solid "+T.border, transition:"all .12s",
+          background: boardWide ? "#2b7de0" : (dark ? T.card : "#fff"),
+          color: boardWide ? "#fff" : T.muted,
+        }}>{boardWide ? "スクロール表示" : "全体表示"}</button>
+      </div>
+
+      {/* 指板ダイアグラム */}
+      {boardWide ? (
+        <div style={{ background: T.card, borderRadius: 12, padding: "10px 0 6px", border: "1px solid "+T.border }}>
+          <FretboardDiagram points={filteredWide}
+            fretStart={0} fretEnd={12} theme={T} fitWidth={true} labelMode={labelMode} />
+        </div>
+      ) : (
+        <div style={{ background: T.card, borderRadius: 12, padding: "10px 0 6px", border: "1px solid "+T.border, overflowX:"scroll", overflowY:"hidden", WebkitOverflowScrolling:"touch" }}>
+          <FretboardDiagram points={filteredScroll}
+            fretStart={0} fretEnd={15} theme={T} fitWidth={false} labelMode={labelMode} />
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
