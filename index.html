@@ -678,6 +678,22 @@ function App() {
     background: a ? "#d9534f" : dark ? T.card : "#fff",
     color: a ? "#fff" : dark ? "#ccc" : "#555"
   });
+  const selectSharp = () => {
+    setUseFlat(false);
+    if (isNatural) {
+      setRootPc(mod12(rootPc + 1));
+    } else if (!useFlat) {
+      setRootPc(mod12(rootPc - 1));
+    }
+  };
+  const selectFlat = () => {
+    setUseFlat(true);
+    if (isNatural) {
+      setRootPc(mod12(rootPc - 1));
+    } else if (useFlat) {
+      setRootPc(mod12(rootPc + 1));
+    }
+  };
   return /*#__PURE__*/React.createElement("div", {
     className: "app-shell",
     style: {
@@ -778,10 +794,7 @@ function App() {
     }
   }, /*#__PURE__*/React.createElement("button", {
     className: "accidental-btn",
-    onClick: () => {
-      setUseFlat(false);
-      if (isNatural) setRootPc(mod12(rootPc + 1));else setRootPc(mod12(rootPc - 1));
-    },
+    onClick: selectSharp,
     "aria-label": "\u30B7\u30E3\u30FC\u30D7\u8868\u8A18\u306B\u5207\u308A\u66FF\u3048",
     "aria-pressed": !isNatural && !useFlat,
     style: {
@@ -797,10 +810,7 @@ function App() {
     }
   }, "\u266F"), /*#__PURE__*/React.createElement("button", {
     className: "accidental-btn",
-    onClick: () => {
-      setUseFlat(true);
-      if (isNatural) setRootPc(mod12(rootPc - 1));else setRootPc(mod12(rootPc + 1));
-    },
+    onClick: selectFlat,
     "aria-label": "\u30D5\u30E9\u30C3\u30C8\u8868\u8A18\u306B\u5207\u308A\u66FF\u3048",
     "aria-pressed": !isNatural && useFlat,
     style: {
