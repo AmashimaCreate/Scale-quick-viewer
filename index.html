@@ -23,6 +23,99 @@
   * { margin:0; padding:0; box-sizing:border-box; }
   body { -webkit-text-size-adjust:100%; }
   button { -webkit-appearance:none; -moz-appearance:none; appearance:none; }
+  button { touch-action:manipulation; }
+  .chip-scroll { scrollbar-width:none; }
+  .chip-scroll::-webkit-scrollbar { display:none; }
+  .fret-scroll { scrollbar-width:thin; }
+  @media (max-width: 480px) {
+    .app-shell {
+      width:100% !important;
+      max-width:none !important;
+      padding:14px 10px calc(16px + env(safe-area-inset-bottom)) !important;
+    }
+    .app-header { margin-bottom:12px !important; }
+    .root-row {
+      align-items:stretch !important;
+      gap:6px !important;
+      margin-bottom:10px !important;
+    }
+    .root-list {
+      justify-content:flex-start !important;
+      flex-wrap:wrap !important;
+      gap:5px !important;
+    }
+    .root-note-btn {
+      flex:1 1 calc((100% - 18px) / 4) !important;
+      width:auto !important;
+      min-width:48px !important;
+      min-height:42px !important;
+      padding:0 !important;
+      font-size:15px !important;
+    }
+    .accidental-row {
+      flex-direction:column !important;
+      gap:5px !important;
+    }
+    .accidental-btn {
+      min-width:38px !important;
+      min-height:39px !important;
+      padding:0 8px !important;
+    }
+    .scale-section { margin-bottom:12px !important; }
+    .scale-category { margin-bottom:9px !important; }
+    .chip-scroll {
+      justify-content:flex-start !important;
+      flex-wrap:nowrap !important;
+      overflow-x:auto !important;
+      -webkit-overflow-scrolling:touch !important;
+      padding:0 2px 5px !important;
+      scroll-snap-type:x proximity;
+    }
+    .scale-type-btn {
+      flex:0 0 auto !important;
+      min-height:34px !important;
+      padding:7px 11px !important;
+      font-size:12px !important;
+      white-space:nowrap !important;
+      scroll-snap-align:start;
+    }
+    .scale-info-card {
+      padding:11px 10px !important;
+      margin-bottom:10px !important;
+    }
+    .scale-title {
+      font-size:22px !important;
+      margin-bottom:8px !important;
+    }
+    .scale-info-grid {
+      gap:8px !important;
+    }
+    .scale-info-divider {
+      display:none !important;
+    }
+    .scale-info-value {
+      font-size:13px !important;
+      letter-spacing:1.4px !important;
+      line-height:1.45 !important;
+    }
+    .legend-row {
+      gap:8px !important;
+      margin-bottom:9px !important;
+    }
+    .board-toggle-row {
+      justify-content:center !important;
+      margin-bottom:8px !important;
+    }
+    .board-toggle-btn {
+      flex:1 1 0 !important;
+      min-height:36px !important;
+      font-size:12px !important;
+    }
+    .fret-card {
+      border-radius:10px !important;
+      padding:8px 0 6px !important;
+    }
+  }
 </style>
 <script crossorigin="anonymous" integrity="sha384-tMH8h3BGESGckSAVGZ82T9n90ztNXxvdwvdM6UoR56cYcf+0iGXBliJ29D+wZ/x8" src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script crossorigin="anonymous" integrity="sha384-bm7MnzvK++ykSwVJ2tynSE5TRdN+xL418osEVF2DE/L/gfWHj91J2Sphe582B1Bh" src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -586,6 +679,7 @@ function App() {
     color: a ? "#fff" : dark ? "#ccc" : "#555"
   });
   return /*#__PURE__*/React.createElement("div", {
+    className: "app-shell",
     style: {
       padding: "20px 16px",
       maxWidth: 600,
@@ -596,6 +690,7 @@ function App() {
       minHeight: "100vh"
     }
   }, /*#__PURE__*/React.createElement("div", {
+    className: "app-header",
     style: {
       display: "flex",
       justifyContent: "center",
@@ -627,6 +722,7 @@ function App() {
       fontWeight: 600
     }
   }, dark ? "☀" : "🌙")), /*#__PURE__*/React.createElement("div", {
+    className: "root-row",
     style: {
       display: "flex",
       alignItems: "center",
@@ -634,6 +730,7 @@ function App() {
       marginBottom: 14
     }
   }, /*#__PURE__*/React.createElement("div", {
+    className: "root-list",
     style: {
       display: "flex",
       gap: 4,
@@ -666,18 +763,21 @@ function App() {
     const basePc = isNatural ? rootPc : useFlat ? mod12(rootPc + 1) : mod12(rootPc - 1);
     return /*#__PURE__*/React.createElement("button", {
       key: x.p,
+      className: "root-note-btn",
       onClick: () => setRootPc(x.p),
       "aria-label": `ルート ${x.n} を選択`,
       "aria-pressed": basePc === x.p,
       style: rBtn(basePc === x.p)
     }, x.n);
   })), /*#__PURE__*/React.createElement("div", {
+    className: "accidental-row",
     style: {
       display: "flex",
       gap: 3,
       flexShrink: 0
     }
   }, /*#__PURE__*/React.createElement("button", {
+    className: "accidental-btn",
     onClick: () => {
       setUseFlat(false);
       if (isNatural) setRootPc(mod12(rootPc + 1));else setRootPc(mod12(rootPc - 1));
@@ -696,6 +796,7 @@ function App() {
       color: !isNatural && !useFlat ? "#fff" : dark ? "#ccc" : "#555"
     }
   }, "\u266F"), /*#__PURE__*/React.createElement("button", {
+    className: "accidental-btn",
     onClick: () => {
       setUseFlat(true);
       if (isNatural) setRootPc(mod12(rootPc - 1));else setRootPc(mod12(rootPc + 1));
@@ -721,11 +822,13 @@ function App() {
       color: T.muted
     }
   }, "= ", useFlat ? ALL_ROOTS[rootPc].sharp : ALL_ROOTS[rootPc].flat), /*#__PURE__*/React.createElement("div", {
+    className: "scale-section",
     style: {
       marginBottom: 18
     }
   }, groupedTypes.map(g => /*#__PURE__*/React.createElement("div", {
     key: g.key,
+    className: "scale-category",
     style: {
       marginBottom: 8
     }
@@ -740,6 +843,7 @@ function App() {
       textAlign: "center"
     }
   }, g.label), /*#__PURE__*/React.createElement("div", {
+    className: "chip-scroll",
     style: {
       display: "flex",
       justifyContent: "center",
@@ -748,11 +852,13 @@ function App() {
     }
   }, g.types.map(t => /*#__PURE__*/React.createElement("button", {
     key: t,
+    className: "scale-type-btn",
     onClick: () => setScaleType(t),
     "aria-label": `${SCALE_TYPES[t].uiLabel}を選択`,
     "aria-pressed": t === scaleType,
     style: tBtn(t === scaleType)
   }, SCALE_TYPES[t].uiLabel)))))), /*#__PURE__*/React.createElement("div", {
+    className: "scale-info-card",
     style: {
       textAlign: "center",
       marginBottom: 12,
@@ -762,6 +868,7 @@ function App() {
       border: "1px solid " + T.border
     }
   }, /*#__PURE__*/React.createElement("h1", {
+    className: "scale-title",
     style: {
       fontSize: 24,
       fontWeight: 900,
@@ -770,6 +877,7 @@ function App() {
       color: T.infoText
     }
   }, scaleInfo.scaleName), /*#__PURE__*/React.createElement("div", {
+    className: "scale-info-grid",
     style: {
       display: "flex",
       justifyContent: "center",
@@ -789,6 +897,7 @@ function App() {
       letterSpacing: 1
     }
   }, "\u69CB\u6210\u97F3"), /*#__PURE__*/React.createElement("div", {
+    className: "scale-info-value",
     style: {
       fontSize: 14,
       fontWeight: 700,
@@ -796,6 +905,7 @@ function App() {
       color: T.infoText
     }
   }, scaleInfo.notesDeg.map(nd => nd.note).join("  "))), /*#__PURE__*/React.createElement("div", {
+    className: "scale-info-divider",
     style: {
       width: 1,
       background: T.border
@@ -813,6 +923,7 @@ function App() {
       letterSpacing: 1
     }
   }, "\u5EA6\u6570"), /*#__PURE__*/React.createElement("div", {
+    className: "scale-info-value",
     style: {
       fontSize: 14,
       fontWeight: 700,
@@ -820,6 +931,7 @@ function App() {
       color: T.infoText
     }
   }, scaleInfo.notesDeg.map(nd => nd.deg).join("  "))))), /*#__PURE__*/React.createElement("div", {
+    className: "legend-row",
     style: {
       display: "flex",
       justifyContent: "center",
@@ -851,6 +963,7 @@ function App() {
       letterSpacing: 0.3
     }
   }, item.label)))), /*#__PURE__*/React.createElement("div", {
+    className: "board-toggle-row",
     style: {
       display: "flex",
       justifyContent: "flex-end",
@@ -858,6 +971,7 @@ function App() {
       marginBottom: 6
     }
   }, /*#__PURE__*/React.createElement("button", {
+    className: "board-toggle-btn",
     onClick: () => setLabelMode(m => m === "degree" ? "note" : "degree"),
     "aria-label": labelMode === "degree" ? "音名表示に切り替え" : "度数表示に切り替え",
     "aria-pressed": labelMode === "note",
@@ -873,6 +987,7 @@ function App() {
       color: labelMode === "note" ? "#fff" : T.muted
     }
   }, labelMode === "degree" ? "音名" : "度数"), /*#__PURE__*/React.createElement("button", {
+    className: "board-toggle-btn",
     onClick: () => setBoardWide(w => !w),
     "aria-label": boardWide ? "スクロール表示に切り替え" : "全体表示に切り替え",
     "aria-pressed": boardWide,
@@ -888,6 +1003,7 @@ function App() {
       color: boardWide ? "#fff" : T.muted
     }
   }, boardWide ? "スクロール表示" : "全体表示")), boardWide ? /*#__PURE__*/React.createElement("div", {
+    className: "fret-card",
     style: {
       background: T.card,
       borderRadius: 12,
@@ -902,6 +1018,7 @@ function App() {
     fitWidth: true,
     labelMode: labelMode
   })) : /*#__PURE__*/React.createElement("div", {
+    className: "fret-card fret-scroll",
     style: {
       background: T.card,
       borderRadius: 12,
