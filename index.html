@@ -145,7 +145,6 @@ const {
 
 const NOTES_SHARP = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
 const NOTES_FLAT = ["C", "D♭", "D", "E♭", "E", "F", "G♭", "G", "A♭", "A", "B♭", "B"];
-const NATURAL_PCS = new Set([0, 2, 4, 5, 7, 9, 11]);
 const mod12 = n => (n % 12 + 12) % 12;
 const TUNING_PC = [4, 9, 2, 7, 11, 4]; /* 6弦→1弦 */
 
@@ -343,7 +342,7 @@ function noteNameForPc(pc, deg, useFlat) {
    - ivToDeg: interval→度数ラベルのマップ
    - notesDeg: [{note, deg}, ...] 構成音と度数のペア配列
    - scaleName: 表示用スケール名（例: "C メジャー"） */
-function computeScaleInfo(rootPc, scaleType, useFlat) {
+function computeScaleInfo(rootPc, scaleType, useFlat, rootName) {
   const scaleDef = SCALE_TYPES[scaleType];
   const ivToDeg = {};
   scaleDef.iv.forEach((iv, i) => {
@@ -354,11 +353,10 @@ function computeScaleInfo(rootPc, scaleType, useFlat) {
     const pc = mod12(rootPc + iv);
     const deg = scaleDef.deg[i];
     return {
-      note: noteNameForPc(pc, deg, useFlat),
+      note: deg === "R" ? rootName : noteNameForPc(pc, deg, useFlat),
       deg
     };
   });
-  const rootName = useFlat ? NOTES_FLAT[rootPc] : NOTES_SHARP[rootPc];
   const scaleName = rootName + " " + scaleDef.uiLabel;
   return {
     scaleDef,
@@ -374,7 +372,7 @@ function computeScaleInfo(rootPc, scaleType, useFlat) {
    各音の音名は度数ラベルの♯/♭に基づいて個別に決定する。
    戻り値: 配列 [{ si, fret, pc, deg, noteName, isRoot, color }, ...]
    描画側はこの配列をmapするだけでよい。 */
-function computeFretboardPoints(rootPc, scalePcSet, ivToDeg, fretStart, fretEnd, useFlat) {
+function computeFretboardPoints(rootPc, scalePcSet, ivToDeg, fretStart, fretEnd, useFlat, rootName) {
   const points = [];
   for (let si = 0; si < 6; si++) {
     const openPc = TUNING_PC[si];
@@ -384,7 +382,7 @@ function computeFretboardPoints(rootPc, scalePcSet, ivToDeg, fretStart, fretEnd,
       const interval = mod12(pc - rootPc);
       const deg = ivToDeg[interval] || "";
       const isRoot = deg === "R";
-      const noteName = noteNameForPc(pc, deg, useFlat);
+      const noteName = isRoot ? rootName : noteNameForPc(pc, deg, useFlat);
       points.push({
         si,
         fret,
@@ -594,29 +592,55 @@ const ALL_ROOTS = [{
   sharp: "B",
   flat: "B"
 }];
+const ROOT_OPTIONS = [{
+  n: "C",
+  p: 0
+}, {
+  n: "D",
+  p: 2
+}, {
+  n: "E",
+  p: 4
+}, {
+  n: "F",
+  p: 5
+}, {
+  n: "G",
+  p: 7
+}, {
+  n: "A",
+  p: 9
+}, {
+  n: "B",
+  p: 11
+}];
 
 /* ═══════════════════════════════════════
    メインアプリ
    ═══════════════════════════════════════ */
 function App() {
-  const [rootPc, setRootPc] = useState(0);
-  const [useFlat, setUseFlat] = useState(false);
+  const [rootBasePc, setRootBasePc] = useState(0);
+  const [accidental, setAccidental] = useState(0); /* -1 = ♭, 0 = natural, 1 = ♯ */
   const [scaleType, setScaleType] = useState("major");
   const [dark, setDark] = useState(false);
   const [boardWide, setBoardWide] = useState(false);
   const [labelMode, setLabelMode] = useState("degree"); /* "degree" | "note" */
+  const rootPc = mod12(rootBasePc + accidental);
+  const useFlat = accidental === -1;
+  const rootBaseName = (ROOT_OPTIONS.find(x => x.p === rootBasePc) || ROOT_OPTIONS[0]).n;
+  const rootName = rootBaseName + (accidental === 1 ? "♯" : accidental === -1 ? "♭" : "");
+  const isNatural = accidental === 0;
 
   /* スケール派生情報を一括計算 */
-  const scaleInfo = useMemo(() => computeScaleInfo(rootPc, scaleType, useFlat), [rootPc, scaleType, useFlat]);
+  const scaleInfo = useMemo(() => computeScaleInfo(rootPc, scaleType, useFlat, rootName), [rootPc, scaleType, useFlat, rootName]);
 
   /* 指板上のスケール音を事前計算（スクロール用15fr / 全体用12fr） */
-  const pointsScroll = useMemo(() => computeFretboardPoints(rootPc, scaleInfo.scalePcSet, scaleInfo.ivToDeg, 0, 15, useFlat), [rootPc, scaleInfo, useFlat]);
-  const pointsWide = useMemo(() => computeFretboardPoints(rootPc, scaleInfo.scalePcSet, scaleInfo.ivToDeg, 0, 12, useFlat), [rootPc, scaleInfo, useFlat]);
+  const pointsScroll = useMemo(() => computeFretboardPoints(rootPc, scaleInfo.scalePcSet, scaleInfo.ivToDeg, 0, 15, useFlat, rootName), [rootPc, scaleInfo, useFlat, rootName]);
+  const pointsWide = useMemo(() => computeFretboardPoints(rootPc, scaleInfo.scalePcSet, scaleInfo.ivToDeg, 0, 12, useFlat, rootName), [rootPc, scaleInfo, useFlat, rootName]);
   const groupedTypes = useMemo(() => CATEGORIES.map(cat => ({
     ...cat,
     types: TYPE_ORDER.filter(k => SCALE_TYPES[k].cat === cat.key)
   })), []);
-  const isNatural = NATURAL_PCS.has(rootPc);
   const T = dark ? {
     bg: "#1a1a1a",
     card: "#2a2a2a",
@@ -679,10 +703,10 @@ function App() {
     color: a ? "#fff" : dark ? "#ccc" : "#555"
   });
   const selectSharp = () => {
-    setUseFlat(false);
+    setAccidental(a => a === 1 ? 0 : 1);
   };
   const selectFlat = () => {
-    setUseFlat(true);
+    setAccidental(a => a === -1 ? 0 : -1);
   };
   return /*#__PURE__*/React.createElement("div", {
     className: "app-shell",
@@ -743,39 +767,17 @@ function App() {
       flex: 1,
       justifyContent: "center"
     }
-  }, [{
-    n: "C",
-    p: 0
-  }, {
-    n: "D",
-    p: 2
-  }, {
-    n: "E",
-    p: 4
-  }, {
-    n: "F",
-    p: 5
-  }, {
-    n: "G",
-    p: 7
-  }, {
-    n: "A",
-    p: 9
-  }, {
-    n: "B",
-    p: 11
-  }].map(x => {
-    /* 臨時記号音のとき、元のナチュラル音ボタンをハイライト */
-    const basePc = isNatural ? rootPc : useFlat ? mod12(rootPc + 1) : mod12(rootPc - 1);
-    return /*#__PURE__*/React.createElement("button", {
-      key: x.p,
-      className: "root-note-btn",
-      onClick: () => setRootPc(x.p),
-      "aria-label": `ルート ${x.n} を選択`,
-      "aria-pressed": basePc === x.p,
-      style: rBtn(basePc === x.p)
-    }, x.n);
-  })), /*#__PURE__*/React.createElement("div", {
+  }, ROOT_OPTIONS.map(x => /*#__PURE__*/React.createElement("button", {
+    key: x.p,
+    className: "root-note-btn",
+    onClick: () => {
+      setRootBasePc(x.p);
+      setAccidental(0);
+    },
+    "aria-label": `ルート ${x.n} を選択`,
+    "aria-pressed": rootBasePc === x.p,
+    style: rBtn(rootBasePc === x.p)
+  }, x.n))), /*#__PURE__*/React.createElement("div", {
     className: "accidental-row",
     style: {
       display: "flex",
@@ -786,7 +788,7 @@ function App() {
     className: "accidental-btn",
     onClick: selectSharp,
     "aria-label": "\u30B7\u30E3\u30FC\u30D7\u8868\u8A18\u306B\u5207\u308A\u66FF\u3048",
-    "aria-pressed": !isNatural && !useFlat,
+    "aria-pressed": accidental === 1,
     style: {
       padding: "6px 10px",
       fontSize: 14,
@@ -794,15 +796,15 @@ function App() {
       borderRadius: 8,
       cursor: "pointer",
       minWidth: 36,
-      border: !isNatural && !useFlat ? "2px solid #d9534f" : "1px solid " + T.border,
-      background: !isNatural && !useFlat ? "#d9534f" : dark ? T.card : "#fff",
-      color: !isNatural && !useFlat ? "#fff" : dark ? "#ccc" : "#555"
+      border: accidental === 1 ? "2px solid #d9534f" : "1px solid " + T.border,
+      background: accidental === 1 ? "#d9534f" : dark ? T.card : "#fff",
+      color: accidental === 1 ? "#fff" : dark ? "#ccc" : "#555"
     }
   }, "\u266F"), /*#__PURE__*/React.createElement("button", {
     className: "accidental-btn",
     onClick: selectFlat,
     "aria-label": "\u30D5\u30E9\u30C3\u30C8\u8868\u8A18\u306B\u5207\u308A\u66FF\u3048",
-    "aria-pressed": !isNatural && useFlat,
+    "aria-pressed": accidental === -1,
     style: {
       padding: "6px 10px",
       fontSize: 14,
@@ -810,9 +812,9 @@ function App() {
       borderRadius: 8,
       cursor: "pointer",
       minWidth: 36,
-      border: !isNatural && useFlat ? "2px solid #d9534f" : "1px solid " + T.border,
-      background: !isNatural && useFlat ? "#d9534f" : dark ? T.card : "#fff",
-      color: !isNatural && useFlat ? "#fff" : dark ? "#ccc" : "#555"
+      border: accidental === -1 ? "2px solid #d9534f" : "1px solid " + T.border,
+      background: accidental === -1 ? "#d9534f" : dark ? T.card : "#fff",
+      color: accidental === -1 ? "#fff" : dark ? "#ccc" : "#555"
     }
   }, "\u266D"))), !isNatural && /*#__PURE__*/React.createElement("div", {
     style: {
