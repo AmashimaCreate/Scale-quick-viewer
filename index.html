@@ -680,19 +680,9 @@ function App() {
   });
   const selectSharp = () => {
     setUseFlat(false);
-    if (isNatural) {
-      setRootPc(mod12(rootPc + 1));
-    } else if (!useFlat) {
-      setRootPc(mod12(rootPc - 1));
-    }
   };
   const selectFlat = () => {
     setUseFlat(true);
-    if (isNatural) {
-      setRootPc(mod12(rootPc - 1));
-    } else if (useFlat) {
-      setRootPc(mod12(rootPc + 1));
-    }
   };
   return /*#__PURE__*/React.createElement("div", {
     className: "app-shell",
